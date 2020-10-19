@@ -764,6 +764,26 @@ class Channel(object):
         tx_context.tx_prop_req = request
         return self.send_tx_proposal(tx_context, peers)
 
+    def query_committed_chaincodes(self, tx_context, peers,
+                                   transient_map=None):
+        """
+
+        :param tx_context: tx_context instance
+        :param peers: peers in the channel
+        :param transient_map: transient map
+        :return: chain code response (Default value = None)
+        """
+        request = create_tx_prop_req(
+            prop_type=CC_QUERY,
+            fcn='QueryChaincodeDefinitions',
+            cc_name='_lifecycle',
+            cc_type=CC_TYPE_GOLANG,
+            args=[""],
+            transient_map=transient_map)
+
+        tx_context.tx_prop_req = request
+        return self.send_tx_proposal(tx_context, peers)
+
     def query_transaction(self, tx_context, peers, tx_id,
                           transient_map=None):
         """Queries the ledger for Transaction by transaction ID.

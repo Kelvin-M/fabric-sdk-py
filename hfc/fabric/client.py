@@ -25,6 +25,7 @@ from hfc.fabric.transaction.tx_proposal_request import TXProposalRequest, \
     CC_INVOKE, CC_QUERY, CC_UPGRADE
 from hfc.protos.common import common_pb2, configtx_pb2, ledger_pb2
 from hfc.protos.peer import query_pb2
+from hfc.protos.peer.lifecycle import lifecycle_pb2
 from hfc.protos.peer.chaincode_pb2 import ChaincodeData, CDSData
 from hfc.fabric.block_decoder import BlockDecoder, \
     decode_fabric_peers_info, decode_fabric_MSP_config, \
@@ -2261,6 +2262,66 @@ class Client(object):
 
             except Exception:
                 _logger.error("Failed to query instantiated chaincodes",
+                              sys.exc_info()[0])
+                raise
+
+        return results
+
+    async def query_committed_chaincodes(self, requestor, channel_name,
+                                         peers, transient_map=None,
+                                         decode=True):
+        """
+        Queries committed chaincode
+
+        :param requestor: User role who issue the request
+        :param channel_name: name of channel to query
+        :param peers: Names or Instance of the peers to query
+        :param transient_map: transient map
+        :param decode: Decode the response payload
+        :return: A `ChaincodeQueryResponse` or `ProposalResponse`
+        """
+        target_peers = []
+        for _peer in peers:
+            if isinstance(_peer, Peer):
+                target_peers.append(_peer)
+            elif isinstance(_peer, str):
+                peer = self.get_peer(_peer)
+                if peer is not None:
+                    target_peers.append(peer)
+                else:
+                    err_msg = f'Cannot find peer with name {_peer}'
+                    _logger.error(err_msg)
+                    raise Exception(err_msg)
+            else:
+                err_msg = f'{_peer} should be a peer name or a Peer instance'
+                _logger.error(err_msg)
+                raise Exception(err_msg)
+
+        if not target_peers:
+            err_msg = "Failed to query block: no functional peer provided"
+            _logger.error(err_msg)
+            raise Exception(err_msg)
+
+        channel = self.get_channel(channel_name)
+        tx_context = create_tx_context(requestor, requestor.cryptoSuite,
+                                       TXProposalRequest())
+
+        responses, proposal, header = channel.query_committed_chaincodes(
+            tx_context, target_peers, transient_map=transient_map)
+
+        responses = await asyncio.gather(*responses)
+        results = []
+        for pplResponse in responses:
+            try:
+                if pplResponse.response and decode:
+                    query_trans = lifecycle_pb2.QueryChaincodeDefinitionsResult()
+                    query_trans.ParseFromString(pplResponse.response.payload)
+                    results.append(query_trans)
+                else:
+                    results.append(pplResponse)
+
+            except Exception:
+                _logger.error("Failed to query committed chaincodes",
                               sys.exc_info()[0])
                 raise
 
